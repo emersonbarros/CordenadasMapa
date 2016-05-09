@@ -21,6 +21,8 @@ import java.util.logging.Logger;
  */
 public class DesenhaPontos {
 
+	static List<No> nos = new ArrayList<No>();
+    
     int[][][] figura;
     static final File dir =
             new File("");
@@ -37,7 +39,6 @@ public class DesenhaPontos {
         figura[i][j][2] = 255;
     }
     
-    static List<No> nos = new ArrayList<No>();
     
   /*  public void linha(int x1, int y1, int x2, int x2){
         sqrt((x1-x2);
@@ -224,7 +225,7 @@ public class DesenhaPontos {
         
         No no1 = nos.get(0);
         No no2 = nos.get(1);
-        double dist = calculaDistancia(no1, no2);
+		double dist = calculaDistancia(no1, no2);
         
         m.imprimePontos();
     }
