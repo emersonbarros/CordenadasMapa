@@ -17,11 +17,13 @@ import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.logging.Level;
@@ -33,7 +35,7 @@ import java.util.logging.Logger;
  */
 public class DesenhaPontos {
 
-	static List<No> nos = new ArrayList<No>();
+	private static List<No> nos = new ArrayList<No>();
 
 	int[][][] figura;
 	static final File dir = new File("");
@@ -222,8 +224,9 @@ public class DesenhaPontos {
 		}
 	}
 
-	private static int ix = 0;
-	private static int jx = 0;
+	private static final ReentrantLock lock = new ReentrantLock();
+	private static HashMap<String, Integer> ix = new HashMap<String, Integer>();
+	private static HashMap<String, Integer> jx = new HashMap<String, Integer>();
 	private static int armazenados = 0;
 	private static int descartados = 0;
 
@@ -239,22 +242,6 @@ public class DesenhaPontos {
 
 		nos.stream().sorted(Comparator.comparing(No::getEstado));
 
-		/*
-		 * Map<String, ArrayList<No>> estados = new HashMap<String,
-		 * ArrayList<No>>(); for (No n1 : nos) { if
-		 * (!estados.containsKey(n1.getEstado())) { estados.put(n1.getEstado(),
-		 * new ArrayList<No>()); estados.get(n1.getEstado()).add(n1); }
-		 * estados.get(n1.getEstado()).add(n1); }
-		 * 
-		 * 
-		 * 
-		 * for (String estado : estados.keySet()) {
-		 * 
-		 * }
-		 */
-
-		// ExecutorService es = Executors.newFixedThreadPool(1);
-
 		if (!Files.exists(Paths.get("distancias")))
 			Files.createDirectory(Paths.get("distancias"));
 
@@ -262,67 +249,116 @@ public class DesenhaPontos {
 			fixEstado(n);
 		}
 
-		Path pathStatus = Paths.get("distancias/status.txt");
-		if (Files.exists(pathStatus)) {
-			List<String> line = Files.readAllLines(pathStatus);
-			if (line.size() > 0) {
-				String[] status = line.get(line.size() - 1).split(",");
-				ix = Integer.parseInt(status[0]);
-				jx = Integer.parseInt(status[1]);
+		/*
+		 * Path pathStatus = Paths.get("distancias/status.txt"); if
+		 * (Files.exists(pathStatus)) { List<String> line =
+		 * Files.readAllLines(pathStatus); if (line.size() > 0) { String[]
+		 * status = line.get(line.size() - 1).split(","); ix.put(status[0],
+		 * Integer.parseInt(status[1])); jx.put(status[0],
+		 * Integer.parseInt(status[2])); } } else {
+		 * Files.createFile(pathStatus); }
+		 */
+		Map<String, ArrayList<No>> estados = new HashMap<String, ArrayList<No>>();
+		for (No n1 : nos) {
+			if (!estados.containsKey(n1.getEstado())) {
+				estados.put(n1.getEstado(), new ArrayList<No>());
+				estados.get(n1.getEstado()).add(n1);
 			}
-		} else {
-			Files.createFile(pathStatus);
+			estados.get(n1.getEstado()).add(n1);
 		}
 
-		for (; ix < nos.size(); ix++) {
-			No n1 = nos.get(ix);
+		for (String estado : estados.keySet()) {
 
-			Path path = Paths.get("distancias/coordenadas-" + n1.getEstado() + ".txt");
+			lock.lock();
+			try {
+				if (ix.get(estado) == null)
+					ix.put(estado, 0);
+				if (jx.get(estado) == null)
+					jx.put(estado, 0);
+			} finally {
+				lock.unlock();
+			}
+
+			Path path = Paths.get("distancias/coordenadas-" + estado + ".txt");
 			if (!Files.exists(path))
 				Files.createFile(path);
 
-			// es.submit(() -> {
-			try (BufferedWriter writer = Files.newBufferedWriter(path, StandardOpenOption.WRITE)) {
-				for (; jx < nos.size(); jx++) {
-					No n2 = nos.get(jx);
+			List<No> cidades = estados.get(estado);
 
-					if (n1.getId() != n2.getId()) {
+			ExecutorService es = Executors.newSingleThreadExecutor();
+
+			es.submit(() -> {
+
+				try (BufferedWriter writer = Files.newBufferedWriter(path, StandardOpenOption.WRITE)) {
+
+					for (; ix.get(estado) < cidades.size();) {
+						No n1 = null;
+						lock.lock();
 						try {
-							if (verificaFronteira(n1, n2)) {
-								double dist = calculaDistancia(n1, n2);
-								Aresta a = new Aresta();
-								a.setId(++armazenados);
-								a.setNo1(n1);
-								a.setNo2(n2);
-								a.setDistancia(dist);
-								writer.write(a.toString());
-							} else {
-								descartados++;
+							n1 = cidades.get(ix.get(estado));
+							ix.put(estado, ix.get(estado) + 1);
+						} finally {
+							lock.unlock();
+						}
+
+						for (; jx.get(estado) < nos.size();) {
+							No n2 = null;
+							lock.lock();
+							try {
+								n2 = nos.get(jx.get(estado));
+								jx.put(estado, jx.get(estado) + 1);
+							} finally {
+								lock.unlock();
 							}
-						} catch (Exception e) {
-							descartados++;
+
+							if (n1.getId() != n2.getId()) {
+
+								if (verificaFronteira(n1, n2)) {
+									double dist = calculaDistancia(n1, n2);
+									Aresta a = new Aresta();
+									a.setId(++armazenados);
+									a.setNo1(n1);
+									a.setNo2(n2);
+									a.setDistancia(dist);
+
+									try {
+										writer.write(a.toString());
+									} catch (Exception e) {
+										e.printStackTrace();
+									}
+
+								} else {
+									lock.lock();
+									try {
+										descartados++;
+									} finally {
+										lock.unlock();
+									}
+								}
+
+								System.out.println("Armazenadas: " + armazenados + " Descartadas: " + descartados
+										+ " Total: " + (armazenados + descartados));
+
+							}
+							/*
+							 * try (BufferedWriter writerStatus =
+							 * Files.newBufferedWriter(pathStatus,
+							 * StandardOpenOption.WRITE)) {
+							 * writerStatus.write(estado + "," + ix + "," + jx);
+							 * } catch (Exception e) { e.printStackTrace(); }
+							 */
 						}
 					}
-					try (BufferedWriter writerStatus = Files.newBufferedWriter(pathStatus, StandardOpenOption.WRITE)) {
-						writerStatus.write(ix + "," + jx);
-						System.out.println("" + ix + "|" + jx);
-					} catch (Exception e) {
-						e.printStackTrace();
-					}
+				} catch (Exception e) {
+					e.printStackTrace();
 				}
-				jx = 0;
-			} catch (Exception e) {
-				e.printStackTrace();
-			}
-			// });
+			});
 
-			System.out.println("Armazenadas: " + armazenados + " Descartadas: " + descartados + " Total: "
-					+ (armazenados + descartados));
 			System.gc();
+
 		}
-		ix = 0;
-		
-		m.imprimePontos();
+
+		// m.imprimePontos();
 
 		/*
 		 * ArrayList<Aresta> arestas = new ArrayList<Aresta>(); for (No n1 :
@@ -344,6 +380,22 @@ public class DesenhaPontos {
 
 	}
 
+	public static <T> Predicate<T> distinctByKey(Function<? super T, Object> keyExtractor) {
+		Map<Object, Boolean> seen = new ConcurrentHashMap<>();
+		return t -> seen.putIfAbsent(keyExtractor.apply(t), Boolean.TRUE) == null;
+	}
+
+	private static boolean verificaFronteira(No no1, No no2) {
+		try {
+			if (no1.getEstado().equals(no2.getEstado()))
+				return true;
+			return Arrays.asList(getFronteiras(no1)).contains(no2);
+		} catch (Exception e) {
+			e.printStackTrace();
+		}
+		return false;
+	}
+
 	private static void fixEstado(No n) {
 		switch (n.getEstado()) {
 		case "M":
@@ -357,30 +409,62 @@ public class DesenhaPontos {
 		}
 	}
 
-	public static <T> Predicate<T> distinctByKey(Function<? super T, Object> keyExtractor) {
-		Map<Object, Boolean> seen = new ConcurrentHashMap<>();
-		return t -> seen.putIfAbsent(keyExtractor.apply(t), Boolean.TRUE) == null;
-	}
-
-	private static boolean verificaFronteira(No no1, No no2) throws Exception {
-		if (no1.getEstado().equals(no2.getEstado()))
-			return true;
-		return Arrays.asList(getFronteiras(no1)).contains(no2);
-	}
-
 	private static String[] getFronteiras(No no) throws Exception {
 		switch (no.getEstado()) {
 		case "SP":
 			return new String[] { "RJ", "PR", "MS", "MG" };
-		/*
-		 * case "RJ": return new String[] { "SP", "MG", "ES" }; case "ES":
-		 * return new String[] { "BA", "MG", "RJ" }; case "MG": return new
-		 * String[] { "SP", "MS", "GO", "ES", "BA" }; case "PR": return new
-		 * String[] { "SP", "SC", "M" }; case "SC": return new String[] { "SP",
-		 * "SC", "M" }; case "RS": return new String[] { "SC" }; case "AM":
-		 * return new String[] { "AC", "RR", "AP", "PA", "MT" }; case "M":
-		 * return new String[] { "GO", "MT", "SP", "PR" };
-		 */
+		case "RJ":
+			return new String[] { "SP", "MG", "ES" };
+		case "ES":
+			return new String[] { "BA", "MG", "RJ" };
+		case "MG":
+			return new String[] { "SP", "MS", "GO", "ES", "BA" };
+		case "PR":
+			return new String[] { "SP", "SC", "M" };
+		case "SC":
+			return new String[] { "SP", "SC", "M" };
+		case "RS":
+			return new String[] { "SC" };
+		case "AM":
+			return new String[] { "AC", "RR", "AP", "PA", "MT" };
+		case "MS":
+			return new String[] { "GO", "MT", "SP", "PR" };
+		case "AP":
+			return new String[] { "PA" };
+		case "PA":
+			return new String[] { "MA", "TO", "MT", "AM", "RR" };
+		case "MT":
+			return new String[] { "RO", "AM", "PA", "TO", "GO", "MS" };
+		case "GO":
+			return new String[] { "MT", "TO", "BA", "MG", "MS" };
+		case "AL":
+			return new String[] { "PE", "SE", "BA" };
+		case "PE":
+			return new String[] { "PB", "CE", "AL", "SE" };
+		case "AC":
+			return new String[] { "AM" };
+		case "CE":
+			return new String[] { "PI", "PE", "PB", "RN" };
+		case "MA":
+			return new String[] { "PA", "PI", "TO" };
+		case "BA":
+			return new String[] { "TO", "PI", "SE", "AL", "PE", "MG", "ES" };
+		case "RO":
+			return new String[] { "AM", "PA" };
+		case "RN":
+			return new String[] { "CE", "PB", "SE", "AL" };
+		case "TO":
+			return new String[] { "PA", "MT", "MA", "PI", "BA", "MG", "GO" };
+		case "PI":
+			return new String[] { "MA", "CE", "PE", "BA", "TO" };
+		case "RR":
+			return new String[] { "AM" };
+		case "PB":
+			return new String[] { "RN", "CE", "PE" };
+		case "SE":
+			return new String[] { "AL", "BA" };
+		case "DF":
+			return new String[] { "GO" };
 		default:
 			break;
 		}
