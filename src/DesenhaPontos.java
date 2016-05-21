@@ -23,6 +23,7 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Function;
 import java.util.function.Predicate;
@@ -226,7 +227,9 @@ public class DesenhaPontos {
 
 	private static final ReentrantLock lock = new ReentrantLock();
 	private static HashMap<String, Integer> ix = new HashMap<String, Integer>();
-	private static HashMap<String, Integer> jx = new HashMap<String, Integer>();
+	// private static HashMap<Integer, HashMap<String, Integer>> jx = new
+	// HashMap<Integer, HashMap<String, Integer>>();
+
 	private static int armazenados = 0;
 	private static int descartados = 0;
 
@@ -262,10 +265,10 @@ public class DesenhaPontos {
 		for (No n1 : nos) {
 			if (!estados.containsKey(n1.getEstado())) {
 				estados.put(n1.getEstado(), new ArrayList<No>());
-				estados.get(n1.getEstado()).add(n1);
 			}
 			estados.get(n1.getEstado()).add(n1);
 		}
+		Map<String, ExecutorService> threads = new HashMap<String, ExecutorService>();
 
 		for (String estado : estados.keySet()) {
 
@@ -273,8 +276,6 @@ public class DesenhaPontos {
 			try {
 				if (ix.get(estado) == null)
 					ix.put(estado, 0);
-				if (jx.get(estado) == null)
-					jx.put(estado, 0);
 			} finally {
 				lock.unlock();
 			}
@@ -285,9 +286,9 @@ public class DesenhaPontos {
 
 			List<No> cidades = estados.get(estado);
 
-			ExecutorService es = Executors.newSingleThreadExecutor();
+			threads.put(estado, Executors.newSingleThreadExecutor());
 
-			es.submit(() -> {
+			threads.get(estado).submit(() -> {
 
 				try (BufferedWriter writer = Files.newBufferedWriter(path, StandardOpenOption.WRITE)) {
 
@@ -301,15 +302,7 @@ public class DesenhaPontos {
 							lock.unlock();
 						}
 
-						for (; jx.get(estado) < nos.size();) {
-							No n2 = null;
-							lock.lock();
-							try {
-								n2 = nos.get(jx.get(estado));
-								jx.put(estado, jx.get(estado) + 1);
-							} finally {
-								lock.unlock();
-							}
+						for (No n2 : nos) {
 
 							if (n1.getId() != n2.getId()) {
 
@@ -323,6 +316,7 @@ public class DesenhaPontos {
 
 									try {
 										writer.write(a.toString());
+										//System.out.println(a.toString());
 									} catch (Exception e) {
 										e.printStackTrace();
 									}
@@ -336,10 +330,11 @@ public class DesenhaPontos {
 									}
 								}
 
-								System.out.println("Armazenadas: " + armazenados + " Descartadas: " + descartados
-										+ " Total: " + (armazenados + descartados));
+								/*System.out.println("Armazenadas: " + armazenados + " Descartadas: " + descartados
+										+ " Total: " + (armazenados + descartados));*/
 
 							}
+
 							/*
 							 * try (BufferedWriter writerStatus =
 							 * Files.newBufferedWriter(pathStatus,
@@ -354,8 +349,16 @@ public class DesenhaPontos {
 				}
 			});
 
-			System.gc();
+			// System.gc();
+		}
 
+		for (String estado : estados.keySet()) {
+			threads.get(estado).shutdown();
+			try {
+				threads.get(estado).awaitTermination(Long.MAX_VALUE, TimeUnit.NANOSECONDS);
+			} catch (InterruptedException e) {
+				e.printStackTrace();
+			}
 		}
 
 		// m.imprimePontos();
