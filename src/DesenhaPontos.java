@@ -29,6 +29,7 @@ import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import java.util.stream.Stream;
 
 /**
  *
@@ -208,9 +209,6 @@ public class DesenhaPontos {
 			int id = 0;
 			while (linha != null && linha.length() > 0) {
 				String[] lista = linha.split(";");
-				for (int i = 0; i < lista.length; i++) {
-					System.out.println(lista[i] + " ");
-				}
 				String cidade = lista[0];
 				String estado = lista[2];
 				double lati = Double.parseDouble(lista[3]);
@@ -245,8 +243,8 @@ public class DesenhaPontos {
 
 		nos.stream().sorted(Comparator.comparing(No::getEstado));
 
-		if (!Files.exists(Paths.get("distancias")))
-			Files.createDirectory(Paths.get("distancias"));
+		removeDirectory(Paths.get("distancias"));
+		Files.createDirectory(Paths.get("distancias"));
 
 		for (No n : nos) {
 			fixEstado(n);
@@ -289,7 +287,7 @@ public class DesenhaPontos {
 			threads.put(estado, Executors.newSingleThreadExecutor());
 
 			threads.get(estado).submit(() -> {
-
+				System.out.println("Iniciando: " + estado);
 				try (BufferedWriter writer = Files.newBufferedWriter(path, StandardOpenOption.WRITE)) {
 
 					for (; ix.get(estado) < cidades.size();) {
@@ -316,7 +314,7 @@ public class DesenhaPontos {
 
 									try {
 										writer.write(a.toString());
-										//System.out.println(a.toString());
+										// System.out.println(a.toString());
 									} catch (Exception e) {
 										e.printStackTrace();
 									}
@@ -329,10 +327,6 @@ public class DesenhaPontos {
 										lock.unlock();
 									}
 								}
-
-								/*System.out.println("Armazenadas: " + armazenados + " Descartadas: " + descartados
-										+ " Total: " + (armazenados + descartados));*/
-
 							}
 
 							/*
@@ -348,8 +342,6 @@ public class DesenhaPontos {
 					e.printStackTrace();
 				}
 			});
-
-			// System.gc();
 		}
 
 		for (String estado : estados.keySet()) {
@@ -359,6 +351,8 @@ public class DesenhaPontos {
 			} catch (InterruptedException e) {
 				e.printStackTrace();
 			}
+			System.out.println("Finalizando: " + estado + " Armazenadas: " + armazenados + " Descartadas: "
+					+ descartados + " Total: " + (armazenados + descartados));
 		}
 
 		// m.imprimePontos();
@@ -381,6 +375,23 @@ public class DesenhaPontos {
 		 * }
 		 */
 
+	}
+
+	public static void removeDirectory(Path path) {
+		try {
+			if (Files.isDirectory(path)) {
+				Files.list(path).forEach(s -> {
+					removeDirectory(s);
+				});
+				Files.delete(path);
+			} else
+
+			{
+				Files.delete(path);
+			}
+		} catch (IOException ex) {
+			ex.printStackTrace();
+		}
 	}
 
 	public static <T> Predicate<T> distinctByKey(Function<? super T, Object> keyExtractor) {
