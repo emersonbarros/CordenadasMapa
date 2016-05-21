@@ -1,5 +1,11 @@
+public class Aresta implements Comparable<Object> {
 
-public class Aresta {
+	public Aresta(long id, No no1, No no2, Double distancia) {
+		this.id = id;
+		this.no1 = no1;
+		this.no2 = no2;
+		this.distancia = distancia;
+	}
 
 	private long id;
 
@@ -43,7 +49,15 @@ public class Aresta {
 
 	@Override
 	public String toString() {
-		return "" + id + "," + no1 + "," + no2 + "," + distancia +"\n";
+		return "" + id + ";" + no1 + ";" + no2 + ";" + distancia + "\n";
+	}
+
+	@Override
+	public int compareTo(Object o) {
+
+		Aresta other = (Aresta) o;
+
+		return this.getDistancia().compareTo(other.getDistancia());
 	}
 
 }

@@ -16,7 +16,8 @@ import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Comparator;
+import java.util.Collection;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -29,7 +30,6 @@ import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.logging.Level;
 import java.util.logging.Logger;
-import java.util.stream.Stream;
 
 /**
  *
@@ -223,10 +223,53 @@ public class DesenhaPontos {
 		}
 	}
 
+	public static Collection<Aresta> leArestas(String estado) {
+		List<Aresta> arestas = new ArrayList<Aresta>();
+		BufferedReader b = null;
+		try {
+			b = new BufferedReader(new FileReader(new File("distancias/coordenadas-" + estado + ".txt")));
+			String linha = b.readLine();
+			int id = 0;
+			while (linha != null && linha.length() > 0) {
+				String[] lista = linha.split(";");
+				int i = 1;
+				double lati1 = Double.parseDouble(lista[i++]);
+				double longi1 = Double.parseDouble(lista[i++]);
+				String estado1 = lista[i++];
+				String cidade1 = lista[i++];
+				i++;
+				double lati2 = Double.parseDouble(lista[i++]);
+				double longi2 = Double.parseDouble(lista[i++]);
+				String estado2 = lista[i++];
+				String cidade2 = lista[i++];
+				double distancia = Double.parseDouble(lista[i++]);
+
+				arestas.add(new Aresta(++id, new No(id, cidade1, estado1, lati1, longi1),
+						new No(id, cidade2, estado2, lati2, longi2), distancia));
+
+				linha = b.readLine();
+			}
+		} catch (Exception e) {
+			e.printStackTrace();
+		}
+
+		Collections.sort(arestas);
+
+		Map<String, Aresta> result = new HashMap<String, Aresta>();
+		for (Aresta a : arestas) {
+			if (result.get(a.getNo1().getCidade()) == null 
+					&& result.get(a.getNo2().getCidade()) == null) {
+				result.put(a.getNo1().getCidade() + a.getNo2().getCidade(), a);
+			}
+		}
+
+		System.gc();
+
+		return result.values();
+	}
+
 	private static final ReentrantLock lock = new ReentrantLock();
 	private static HashMap<String, Integer> ix = new HashMap<String, Integer>();
-	// private static HashMap<Integer, HashMap<String, Integer>> jx = new
-	// HashMap<Integer, HashMap<String, Integer>>();
 
 	private static int armazenados = 0;
 	private static int descartados = 0;
@@ -241,37 +284,18 @@ public class DesenhaPontos {
 		DesenhaPontos m = new DesenhaPontos();
 		m.le();
 
-		nos.stream().sorted(Comparator.comparing(No::getEstado));
-
 		removeDirectory(Paths.get("distancias"));
 		Files.createDirectory(Paths.get("distancias"));
 
-		for (No n : nos) {
-			fixEstado(n);
-		}
+		fixEstado();
 
-		/*
-		 * Path pathStatus = Paths.get("distancias/status.txt"); if
-		 * (Files.exists(pathStatus)) { List<String> line =
-		 * Files.readAllLines(pathStatus); if (line.size() > 0) { String[]
-		 * status = line.get(line.size() - 1).split(","); ix.put(status[0],
-		 * Integer.parseInt(status[1])); jx.put(status[0],
-		 * Integer.parseInt(status[2])); } } else {
-		 * Files.createFile(pathStatus); }
-		 */
-		Map<String, ArrayList<No>> estados = new HashMap<String, ArrayList<No>>();
-		for (No n1 : nos) {
-			if (!estados.containsKey(n1.getEstado())) {
-				estados.put(n1.getEstado(), new ArrayList<No>());
-			}
-			estados.get(n1.getEstado()).add(n1);
-		}
+		Map<String, ArrayList<No>> estados = separaCidadesPorEstado();
+
 		Map<String, ExecutorService> threads = new HashMap<String, ExecutorService>();
 
 		for (String estado : estados.keySet()) {
-
-			lock.lock();
 			try {
+				lock.lock();
 				if (ix.get(estado) == null)
 					ix.put(estado, 0);
 			} finally {
@@ -288,93 +312,106 @@ public class DesenhaPontos {
 
 			threads.get(estado).submit(() -> {
 				System.out.println("Iniciando: " + estado);
-				try (BufferedWriter writer = Files.newBufferedWriter(path, StandardOpenOption.WRITE)) {
-
-					for (; ix.get(estado) < cidades.size();) {
-						No n1 = null;
-						lock.lock();
-						try {
-							n1 = cidades.get(ix.get(estado));
-							ix.put(estado, ix.get(estado) + 1);
-						} finally {
-							lock.unlock();
-						}
-
-						for (No n2 : nos) {
-
-							if (n1.getId() != n2.getId()) {
-
-								if (verificaFronteira(n1, n2)) {
-									double dist = calculaDistancia(n1, n2);
-									Aresta a = new Aresta();
-									a.setId(++armazenados);
-									a.setNo1(n1);
-									a.setNo2(n2);
-									a.setDistancia(dist);
-
-									try {
-										writer.write(a.toString());
-										// System.out.println(a.toString());
-									} catch (Exception e) {
-										e.printStackTrace();
-									}
-
-								} else {
-									lock.lock();
-									try {
-										descartados++;
-									} finally {
-										lock.unlock();
-									}
-								}
-							}
-
-							/*
-							 * try (BufferedWriter writerStatus =
-							 * Files.newBufferedWriter(pathStatus,
-							 * StandardOpenOption.WRITE)) {
-							 * writerStatus.write(estado + "," + ix + "," + jx);
-							 * } catch (Exception e) { e.printStackTrace(); }
-							 */
-						}
-					}
-				} catch (Exception e) {
-					e.printStackTrace();
-				}
+				processaEstado(estado, path, cidades);
 			});
 		}
 
+		finalizaThreads(estados, threads);
+
+		// nos.stream().sorted(Comparator.comparing(No::getCidade));
+
+		// m.imprimePontos();
+
+	}
+
+	private static void finalizaThreads(Map<String, ArrayList<No>> estados, Map<String, ExecutorService> threads) {
 		for (String estado : estados.keySet()) {
+
 			threads.get(estado).shutdown();
 			try {
 				threads.get(estado).awaitTermination(Long.MAX_VALUE, TimeUnit.NANOSECONDS);
 			} catch (InterruptedException e) {
 				e.printStackTrace();
 			}
+
+			try {
+				Path path = Paths.get("distancias/coordenadas-resumido-" + estado + ".txt");
+				Files.deleteIfExists(path);
+				Files.createFile(path);
+				try (BufferedWriter writer = Files.newBufferedWriter(path, StandardOpenOption.WRITE)) {
+					for (Aresta aresta : leArestas(estado)) {
+						writer.write(aresta.toString());
+					}
+				}
+			} catch (Exception e) {
+				e.printStackTrace();
+			}
+
 			System.out.println("Finalizando: " + estado + " Armazenadas: " + armazenados + " Descartadas: "
 					+ descartados + " Total: " + (armazenados + descartados));
 		}
+	}
 
-		// m.imprimePontos();
+	private static void processaEstado(String estado, Path path, List<No> cidades) {
+		try (BufferedWriter writer = Files.newBufferedWriter(path, StandardOpenOption.WRITE)) {
 
-		/*
-		 * ArrayList<Aresta> arestas = new ArrayList<Aresta>(); for (No n1 :
-		 * nos) {
-		 * 
-		 * if (!estados.contains(n1.getEstado())) { estados.add(n1.getEstado());
-		 * }
-		 * 
-		 * es.submit(() -> { for (No n2 : nos) { if (n1.getId() != n2.getId()) {
-		 * try { if (verificaFronteira(n1, n2)) { double dist =
-		 * calculaDistancia(n1, n2); if (dist < 300) { Aresta a = new Aresta();
-		 * a.setNo1(n1); a.setNo1(n2); a.setDistancia(dist); arestas.add(a); }
-		 * else descartados++; } else { descartados++; } } catch (Exception e) {
-		 * descartados++; } } } System.out.println(arestas.size() + " + " +
-		 * descartados + " Total:" + (arestas.size() + descartados)); });
-		 * 
-		 * }
-		 */
+			for (; ix.get(estado) < cidades.size();) {
+				No n1 = null;
+				lock.lock();
+				try {
+					n1 = cidades.get(ix.get(estado));
+					ix.put(estado, ix.get(estado) + 1);
+				} finally {
+					lock.unlock();
+				}
 
+				for (No n2 : nos) {
+
+					if (n1.getId() != n2.getId()) {
+
+						if (verificaFronteira(n1, n2)) {
+							double dist = calculaDistancia(n1, n2);
+							Aresta a = new Aresta(++armazenados, n1, n2, dist);
+							try {
+								writer.write(a.toString());
+								// System.out.println(a.toString());
+							} catch (Exception e) {
+								e.printStackTrace();
+							}
+
+						} else {
+							lock.lock();
+							try {
+								descartados++;
+							} finally {
+								lock.unlock();
+							}
+						}
+					}
+
+					/*
+					 * try (BufferedWriter writerStatus =
+					 * Files.newBufferedWriter(pathStatus,
+					 * StandardOpenOption.WRITE)) { writerStatus.write(estado +
+					 * "," + ix + "," + jx); } catch (Exception e) {
+					 * e.printStackTrace(); }
+					 */
+				}
+			}
+		} catch (Exception e) {
+			e.printStackTrace();
+		}
+	}
+
+	private static Map<String, ArrayList<No>> separaCidadesPorEstado() {
+		Map<String, ArrayList<No>> estados = new HashMap<String, ArrayList<No>>();
+		for (No n1 : nos) {
+			if (!estados.containsKey(n1.getEstado())) {
+				estados.put(n1.getEstado(), new ArrayList<No>());
+			}
+			estados.get(n1.getEstado()).add(n1);
+		}
+		return estados;
 	}
 
 	public static void removeDirectory(Path path) {
@@ -410,16 +447,18 @@ public class DesenhaPontos {
 		return false;
 	}
 
-	private static void fixEstado(No n) {
-		switch (n.getEstado()) {
-		case "M":
-			n.setEstado("MS");
-			break;
-		case "N":
-			n.setEstado("GO");
-			break;
-		default:
-			break;
+	private static void fixEstado() {
+		for (No n : nos) {
+			switch (n.getEstado()) {
+			case "M":
+				n.setEstado("MS");
+				break;
+			case "N":
+				n.setEstado("GO");
+				break;
+			default:
+				break;
+			}
 		}
 	}
 

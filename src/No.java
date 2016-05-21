@@ -86,7 +86,7 @@ public class No implements Comparable<Object> {
 
 	@Override
 	public String toString() {
-		return latitude + "," + longitude + "," + estado + "," + cidade + "," + id;
+		return latitude + ";" + longitude + ";" + estado + ";" + cidade + ";" + id;
 	}
 
 }
