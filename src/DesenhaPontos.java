@@ -14,10 +14,12 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collection;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -36,8 +38,6 @@ import java.util.logging.Logger;
  * @author augustomeira
  */
 public class DesenhaPontos {
-
-	private static List<No> nos = new ArrayList<No>();
 
 	int[][][] figura;
 	static final File dir = new File("");
@@ -89,7 +89,7 @@ public class DesenhaPontos {
 	 * }
 	 */
 
-	private static double calculaDistancia(No no1, No no2) {
+	private static Float calculaDistancia(No no1, No no2) {
 
 		double lat1 = no1.getLatitude();
 		double lng1 = no1.getLongitude();
@@ -105,7 +105,7 @@ public class DesenhaPontos {
 		double a = Math.pow(sindLat, 2)
 				+ Math.pow(sindLng, 2) * Math.cos(Math.toRadians(lat1)) * Math.cos(Math.toRadians(lat2));
 		double c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-		double dist = earthRadius * c;
+		Float dist = new Float(earthRadius * c);
 
 		return dist;
 	}
@@ -151,7 +151,7 @@ public class DesenhaPontos {
 
 				}
 
-				for (No no : nos) {
+				for (No no : getNos()) {
 
 					double a1 = no.getLatitude();
 					double a2 = no.getLongitude();
@@ -200,21 +200,69 @@ public class DesenhaPontos {
 
 	}
 
+	private static Connection conn = null;
+
 	// leitura de pontos. Exemplo.
-	public void le() {
+	public void carregaNos(boolean dropTables, boolean useMysql) {
+		String dropNosString = "DROP TABLE IF EXISTS NOS";
+		String dropArestasString = "DROP TABLE IF EXISTS ARESTAS";
+		String createNosString = "CREATE TABLE NOS (ID INTEGER NOT NULL, CIDADE VARCHAR(50) NOT NULL, ESTADO VARCHAR(50) NOT NULL, LAT FLOAT NOT NULL, LON FLOAT NOT NULL)";
+		String createArestasString = "CREATE TABLE ARESTAS (ID INTEGER NOT NULL, ID_NO_1 INTEGER NOT NULL, ID_NO_2 INTEGER NOT NULL, DISTANCIA FLOAT NOT NULL)";
+		String alterArestasString = "ALTER TABLE ARESTAS ADD PRIMARY KEY (`ID_NO_1`, `ID_NO_2`);";
+
+
+		String insert = "INSERT INTO NOS (ID, CIDADE, ESTADO, LAT, LON) VALUES (?,?,?,?,?)";
+		int maxId = 0;
+		try {
+			if (useMysql)
+				conn = MysqlConnectionManager.getInstance().getConnection();
+			else
+				conn = DerbyConnectionManager.getInstance().getConnection();
+
+			Statement st = conn.createStatement();
+			if (dropTables) {
+				st.execute(dropNosString);
+				st = conn.createStatement();
+				st.execute(dropArestasString);
+				st = conn.createStatement();
+				st.execute(createNosString);
+				st = conn.createStatement();
+				st.execute(createArestasString);
+				st = conn.createStatement();
+				st.execute(alterArestasString);
+			}
+			st = conn.createStatement();
+			ResultSet rs = st.executeQuery("SELECT MAX(ID) FROM NOS");
+			while (rs.next())
+				maxId = rs.getInt(1);
+
+		} catch (Exception e) {
+			e.printStackTrace();
+		}
+
 		BufferedReader b = null;
 		try {
 			b = new BufferedReader(new FileReader(new File("coordenadas.txt")));
 			String linha = b.readLine();
 			int id = 0;
 			while (linha != null && linha.length() > 0) {
-				String[] lista = linha.split(";");
-				String cidade = lista[0];
-				String estado = lista[2];
-				double lati = Double.parseDouble(lista[3]);
-				double longi = Double.parseDouble(lista[4]);
+				if (id >= maxId) {
 
-				nos.add(new No(++id, cidade, estado, lati, longi));
+					String[] lista = linha.split(";");
+					String cidade = lista[0];
+					String estado = lista[2];
+					Float lati = Float.parseFloat(lista[3]);
+					Float longi = Float.parseFloat(lista[4]);
+
+					int i = 0;
+					PreparedStatement st = conn.prepareStatement(insert);
+					st.setInt(++i, ++id);
+					st.setString(++i, cidade);
+					st.setString(++i, fixEstado(estado));
+					st.setFloat(++i, lati);
+					st.setFloat(++i, longi);
+					st.execute();
+				}
 
 				linha = b.readLine();
 			}
@@ -223,49 +271,29 @@ public class DesenhaPontos {
 		}
 	}
 
-	public static Collection<Aresta> leArestas(String estado) {
+	public static List<Aresta> getArestas(String estado) {
 		List<Aresta> arestas = new ArrayList<Aresta>();
-		BufferedReader b = null;
+
 		try {
-			b = new BufferedReader(new FileReader(new File("distancias/coordenadas-" + estado + ".txt")));
-			String linha = b.readLine();
-			int id = 0;
-			while (linha != null && linha.length() > 0) {
-				String[] lista = linha.split(";");
-				int i = 1;
-				double lati1 = Double.parseDouble(lista[i++]);
-				double longi1 = Double.parseDouble(lista[i++]);
-				String estado1 = lista[i++];
-				String cidade1 = lista[i++];
-				i++;
-				double lati2 = Double.parseDouble(lista[i++]);
-				double longi2 = Double.parseDouble(lista[i++]);
-				String estado2 = lista[i++];
-				String cidade2 = lista[i++];
-				double distancia = Double.parseDouble(lista[i++]);
+			String select = "SELECT A.ID, A.ID_NO_1, A.ID_NO_2, A.DISTANCIA FROM ARESTAS A, NOS N WHERE A.ID_NO_1 = N.ID AND N.ESTADO = ? ORDER BY A.DISTANCIA";
+			PreparedStatement st = conn.prepareStatement(select);
+			st.setString(1, estado);
+			ResultSet r = st.executeQuery();
+			while (r.next()) {
+				int i = 0;
+				int id = r.getInt(++i);
+				No no1 = new No(r.getInt(++i));
+				No no2 = new No(r.getInt(i++));
+				Float dist = r.getFloat(i++);
 
-				arestas.add(new Aresta(++id, new No(id, cidade1, estado1, lati1, longi1),
-						new No(id, cidade2, estado2, lati2, longi2), distancia));
-
-				linha = b.readLine();
+				Aresta a = new Aresta(id, no1, no2, dist);
+				arestas.add(a);
 			}
 		} catch (Exception e) {
 			e.printStackTrace();
 		}
 
-		Collections.sort(arestas);
-
-		Map<String, Aresta> result = new HashMap<String, Aresta>();
-		for (Aresta a : arestas) {
-			if (result.get(a.getNo1().getCidade()) == null 
-					&& result.get(a.getNo2().getCidade()) == null) {
-				result.put(a.getNo1().getCidade() + a.getNo2().getCidade(), a);
-			}
-		}
-
-		System.gc();
-
-		return result.values();
+		return arestas;
 	}
 
 	private static final ReentrantLock lock = new ReentrantLock();
@@ -282,18 +310,16 @@ public class DesenhaPontos {
 	public static void main(String[] args) throws IOException {
 
 		DesenhaPontos m = new DesenhaPontos();
-		m.le();
+		m.carregaNos(false, true);
 
 		removeDirectory(Paths.get("distancias"));
 		Files.createDirectory(Paths.get("distancias"));
 
-		fixEstado();
-
-		Map<String, ArrayList<No>> estados = separaCidadesPorEstado();
+		List<String> estados = separaCidadesPorEstado();
 
 		Map<String, ExecutorService> threads = new HashMap<String, ExecutorService>();
 
-		for (String estado : estados.keySet()) {
+		for (String estado : estados) {
 			try {
 				lock.lock();
 				if (ix.get(estado) == null)
@@ -302,17 +328,13 @@ public class DesenhaPontos {
 				lock.unlock();
 			}
 
-			Path path = Paths.get("distancias/coordenadas-" + estado + ".txt");
-			if (!Files.exists(path))
-				Files.createFile(path);
-
-			List<No> cidades = estados.get(estado);
+			List<No> cidades = getNosPorEstado(estado);
 
 			threads.put(estado, Executors.newSingleThreadExecutor());
 
 			threads.get(estado).submit(() -> {
 				System.out.println("Iniciando: " + estado);
-				processaEstado(estado, path, cidades);
+				processaEstado(estado, cidades);
 			});
 		}
 
@@ -324,8 +346,8 @@ public class DesenhaPontos {
 
 	}
 
-	private static void finalizaThreads(Map<String, ArrayList<No>> estados, Map<String, ExecutorService> threads) {
-		for (String estado : estados.keySet()) {
+	private static void finalizaThreads(List<String> estados, Map<String, ExecutorService> threads) {
+		for (String estado : estados) {
 
 			threads.get(estado).shutdown();
 			try {
@@ -334,84 +356,143 @@ public class DesenhaPontos {
 				e.printStackTrace();
 			}
 
-			try {
-				Path path = Paths.get("distancias/coordenadas-resumido-" + estado + ".txt");
-				Files.deleteIfExists(path);
-				Files.createFile(path);
-				try (BufferedWriter writer = Files.newBufferedWriter(path, StandardOpenOption.WRITE)) {
-					for (Aresta aresta : leArestas(estado)) {
-						writer.write(aresta.toString());
-					}
-				}
-			} catch (Exception e) {
-				e.printStackTrace();
-			}
+			threads.put(estado, Executors.newSingleThreadExecutor());
+
+			threads.get(estado).submit(() -> {
+				System.out.println("Resumindo: " + estado);
+				//resumeArestas(estado, threads);
+			});
 
 			System.out.println("Finalizando: " + estado + " Armazenadas: " + armazenados + " Descartadas: "
 					+ descartados + " Total: " + (armazenados + descartados));
 		}
 	}
 
-	private static void processaEstado(String estado, Path path, List<No> cidades) {
-		try (BufferedWriter writer = Files.newBufferedWriter(path, StandardOpenOption.WRITE)) {
-
-			for (; ix.get(estado) < cidades.size();) {
-				No n1 = null;
-				lock.lock();
-				try {
-					n1 = cidades.get(ix.get(estado));
-					ix.put(estado, ix.get(estado) + 1);
-				} finally {
-					lock.unlock();
-				}
-
-				for (No n2 : nos) {
-
-					if (n1.getId() != n2.getId()) {
-
-						if (verificaFronteira(n1, n2)) {
-							double dist = calculaDistancia(n1, n2);
-							Aresta a = new Aresta(++armazenados, n1, n2, dist);
-							try {
-								writer.write(a.toString());
-								// System.out.println(a.toString());
-							} catch (Exception e) {
-								e.printStackTrace();
-							}
-
-						} else {
-							lock.lock();
-							try {
-								descartados++;
-							} finally {
-								lock.unlock();
-							}
-						}
-					}
-
-					/*
-					 * try (BufferedWriter writerStatus =
-					 * Files.newBufferedWriter(pathStatus,
-					 * StandardOpenOption.WRITE)) { writerStatus.write(estado +
-					 * "," + ix + "," + jx); } catch (Exception e) {
-					 * e.printStackTrace(); }
-					 */
+	private static void resumeArestas(String estado, Map<String, ExecutorService> threads) {
+		try {
+			Path path = Paths.get("distancias/coordenadas-resumido-" + estado + ".txt");
+			Files.deleteIfExists(path);
+			Files.createFile(path);
+			try (BufferedWriter writer = Files.newBufferedWriter(path, StandardOpenOption.WRITE)) {
+				for (Aresta aresta : getArestas(estado)) {
+					writer.write(aresta.toString());
 				}
 			}
+
+			threads.get(estado).shutdown();
+			try {
+				threads.get(estado).awaitTermination(Long.MAX_VALUE, TimeUnit.NANOSECONDS);
+			} catch (InterruptedException e) {
+				e.printStackTrace();
+			}
+
 		} catch (Exception e) {
 			e.printStackTrace();
 		}
 	}
 
-	private static Map<String, ArrayList<No>> separaCidadesPorEstado() {
-		Map<String, ArrayList<No>> estados = new HashMap<String, ArrayList<No>>();
-		for (No n1 : nos) {
-			if (!estados.containsKey(n1.getEstado())) {
-				estados.put(n1.getEstado(), new ArrayList<No>());
+	private static void processaEstado(String estado, List<No> cidades) {
+
+		String insert = "INSERT INTO ARESTAS (ID, ID_NO_1, ID_NO_2, DISTANCIA) VALUES (?,?,?,?)";
+
+		for (; ix.get(estado) < cidades.size();) {
+			No n1 = null;
+			lock.lock();
+			try {
+				n1 = cidades.get(ix.get(estado));
+				ix.put(estado, ix.get(estado) + 1);
+			} finally {
+				lock.unlock();
 			}
-			estados.get(n1.getEstado()).add(n1);
+			List<No> nos = getNos();
+			for (No n2 : nos) {
+
+				if (n1.getId() != n2.getId()) {
+
+					if (verificaFronteira(n1, n2)) {
+						Float dist = calculaDistancia(n1, n2);
+						Aresta a = new Aresta(++armazenados, n1, n2, dist);
+						try {
+							int i = 0;
+							PreparedStatement st = conn.prepareStatement(insert);
+							st.setInt(++i, a.getId());
+							st.setInt(++i, n1.getId());
+							st.setInt(++i, n2.getId());
+							st.setFloat(++i, dist);
+							st.execute();
+						} catch (Exception e) {
+							e.printStackTrace();
+						}
+
+					} else {
+						lock.lock();
+						try {
+							descartados++;
+						} finally {
+							lock.unlock();
+						}
+					}
+				}
+			}
 		}
+
+	}
+
+	private static List<String> separaCidadesPorEstado() {
+		List<String> estados = new ArrayList<String>();
+
+		try {
+			String select = "SELECT DISTINCT ESTADO FROM NOS";
+			Statement st = conn.createStatement();
+			ResultSet r = st.executeQuery(select);
+			while (r.next()) {
+				estados.add(r.getString(1));
+			}
+		} catch (Exception e) {
+			e.printStackTrace();
+		}
+
 		return estados;
+	}
+
+	private static List<No> allNos = null;
+
+	private static List<No> getNos() {
+		if (allNos == null) {
+			allNos = new ArrayList<No>();
+			try {
+				String select = "SELECT ID, CIDADE, ESTADO, LAT, LON FROM NOS";
+				Statement st = conn.createStatement();
+				ResultSet r = st.executeQuery(select);
+				while (r.next()) {
+					int i = 0;
+					No no = new No(r.getInt(++i), r.getString(++i), r.getString(++i), r.getFloat(++i), r.getFloat(++i));
+					allNos.add(no);
+				}
+			} catch (Exception e) {
+				e.printStackTrace();
+			}
+		}
+		return allNos;
+	}
+
+	private static List<No> getNosPorEstado(String estado) {
+		List<No> result = new ArrayList<No>();
+
+		try {
+			String select = "SELECT ID, CIDADE, ESTADO, LAT, LON FROM NOS WHERE ESTADO = ?";
+			PreparedStatement st = conn.prepareStatement(select);
+			st.setString(1, estado);
+			ResultSet r = st.executeQuery();
+			while (r.next()) {
+				int i = 0;
+				No no = new No(r.getInt(++i), r.getString(++i), r.getString(++i), r.getFloat(++i), r.getFloat(++i));
+				result.add(no);
+			}
+		} catch (Exception e) {
+			e.printStackTrace();
+		}
+		return result;
 	}
 
 	public static void removeDirectory(Path path) {
@@ -447,19 +528,14 @@ public class DesenhaPontos {
 		return false;
 	}
 
-	private static void fixEstado() {
-		for (No n : nos) {
-			switch (n.getEstado()) {
-			case "M":
-				n.setEstado("MS");
-				break;
-			case "N":
-				n.setEstado("GO");
-				break;
-			default:
-				break;
-			}
+	private static String fixEstado(String estado) {
+		switch (estado) {
+		case "M":
+			return "MS";
+		case "N":
+			return "GO";
 		}
+		return estado;
 	}
 
 	private static String[] getFronteiras(No no) throws Exception {

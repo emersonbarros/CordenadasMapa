@@ -10,13 +10,17 @@
  */
 public class No implements Comparable<Object> {
 
-	private Double latitude;
-	private Double longitude;
+	private Float latitude;
+	private Float longitude;
 	private String estado;
 	private String cidade;
 	private int id;
 
-	public No(int id, String cidade, String estado, Double latitude, Double longitude) {
+	public No(int id) {
+		this.id = id;
+	}
+	
+	public No(int id, String cidade, String estado, Float latitude, Float longitude) {
 		this.id = id;
 		this.cidade = cidade;
 		this.estado = estado;
@@ -24,19 +28,19 @@ public class No implements Comparable<Object> {
 		this.longitude = longitude;
 	}
 
-	public Double getLatitude() {
+	public Float getLatitude() {
 		return latitude;
 	}
 
-	public void setLatitude(Double latitude) {
+	public void setLatitude(Float latitude) {
 		this.latitude = latitude;
 	}
 
-	public Double getLongitude() {
+	public Float getLongitude() {
 		return longitude;
 	}
 
-	public void setLogitude(Double logitude) {
+	public void setLogitude(Float logitude) {
 		this.longitude = logitude;
 	}
 
@@ -56,7 +60,7 @@ public class No implements Comparable<Object> {
 		this.cidade = cidade;
 	}
 
-	public void setLongitude(Double longitude) {
+	public void setLongitude(Float longitude) {
 		this.longitude = longitude;
 	}
 

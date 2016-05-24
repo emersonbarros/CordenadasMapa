@@ -1,25 +1,25 @@
 public class Aresta implements Comparable<Object> {
 
-	public Aresta(long id, No no1, No no2, Double distancia) {
+	public Aresta(Integer id, No no1, No no2, Float distancia) {
 		this.id = id;
 		this.no1 = no1;
 		this.no2 = no2;
 		this.distancia = distancia;
 	}
 
-	private long id;
+	private Integer id;
 
 	private No no1;
 
 	private No no2;
 
-	private Double distancia;
+	private Float distancia;
 
-	public long getId() {
+	public Integer getId() {
 		return id;
 	}
 
-	public void setId(long id) {
+	public void setId(Integer id) {
 		this.id = id;
 	}
 
@@ -39,11 +39,11 @@ public class Aresta implements Comparable<Object> {
 		this.no2 = no2;
 	}
 
-	public Double getDistancia() {
+	public Float getDistancia() {
 		return distancia;
 	}
 
-	public void setDistancia(Double distancia) {
+	public void setDistancia(Float distancia) {
 		this.distancia = distancia;
 	}
 
