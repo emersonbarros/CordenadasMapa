@@ -1711,7 +1711,7 @@ Arroio Grande;Parana;PR;-25.2894444;-50.6686111
 Arroio Guacu;Parana;PR;-24.3833333;-54.25
 Arroio Miranda;Rio Grande do Sul;RS;-28.2;-52.3666667
 Arroio Teixeira;Rio Grande do Sul;RS;-29.6333333;-49.9666667
-Arroio Trinta;Amazonas;AM;-26.8666667;-51.3166667
+Arroio Trinta;Santa Catarina;SC;-26.8666667;-51.3166667
 Arrojado;Bahia;BA;-12.3833333;-38.45
 Arrojado;Bahia;BA;-13.4833333;-44.6166667
 Arrojado;Ceara;CE;-6.6666667;-39.0333333
