@@ -47,6 +47,10 @@ public class Aresta implements Comparable<Object> {
 		this.distancia = distancia;
 	}
 
+	public String getKey() {
+		return no1.getCidade() + "_" + no1.getEstado() + "_" + no2.getCidade() + "_" + no2.getEstado();
+	}
+
 	@Override
 	public String toString() {
 		return "" + id + ";" + no1 + ";" + no2 + ";" + distancia + "\n";

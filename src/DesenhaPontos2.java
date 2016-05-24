@@ -10,28 +10,21 @@ import java.io.File;
 import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.nio.file.StandardOpenOption;
-import java.sql.Connection;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
-import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.ReentrantLock;
-import java.util.function.Function;
-import java.util.function.Predicate;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import java.util.stream.Collectors;
 
 /**
  *
@@ -59,13 +52,13 @@ public class DesenhaPontos2 {
 	 * //algoritmo de Bresenhan //draw line java //y=f(x) //Não precisa suavisar
 	 * a reta
 	 */
-	public void line(int x, int y, int x2, int y2, int color) {
+	public void linha(int x, int y, int x2, int y2) {
 		int w = x2 - x;
 		int h = y2 - y;
 		double m = h / (double) w;
 		double j = y;
 		for (int i = x; i <= x2; i++) {
-			// putpixel(i,(int)j,color) ;
+			setPreto(i, (int) j);
 			j += m;
 		}
 	}
@@ -151,14 +144,28 @@ public class DesenhaPontos2 {
 
 				}
 
-				for (No no : getNos()) {
+				for (No no : allNos) {
 
 					double a1 = no.getLatitude();
 					double a2 = no.getLongitude();
+					double b1 = -1;
+					double b2 = -1;
+
+					No no2 = null;
+					List<Aresta> nosLigados = arestas.values().stream().filter(p -> p.getNo1().getId() == no.getId())
+							.collect(Collectors.toList());
+					if (nosLigados.size() > 0) {
+						no2 = nosLigados.get(0).getNo2();
+						b1 = no2.getLatitude();
+						b2 = no2.getLongitude();
+					}
 
 					// converte em inteiro com um fator de escala 30.
 					int x = (int) (a1 * 30);
 					int y = (int) (a2 * 30);
+
+					int x2 = (int) (b1 * 30);
+					int y2 = (int) (b2 * 30);
 
 					if (vez == 0) {
 						// procura min e max
@@ -174,9 +181,26 @@ public class DesenhaPontos2 {
 						if (y > ymax) {
 							ymax = y;
 						}
+
+						// procura min e max
+						if (x2 < xmin) {
+							xmin = x2;
+						}
+						if (x2 > xmax) {
+							xmax = x2;
+						}
+						if (y2 < ymin) {
+							ymin = y2;
+						}
+						if (y2 > ymax) {
+							ymax = y2;
+						}
 					} else {
 						// imprime latitude e longitude
 						setPreto(x - xmin, y - ymin);
+
+						if (b1 != -1 && b2 != -1)
+							linha(x - xmin, y - ymin, x2 - xmin, y2 - ymin);
 					}
 					assert (ymin <= ymax);
 				}
@@ -200,45 +224,7 @@ public class DesenhaPontos2 {
 
 	}
 
-	private static Connection conn = null;
-
-	// leitura de pontos. Exemplo.
-	public void carregaNos(boolean dropTables, boolean useMysql) {
-		String dropNosString = "DROP TABLE IF EXISTS NOS";
-		String dropArestasString = "DROP TABLE IF EXISTS ARESTAS";
-		String createNosString = "CREATE TABLE NOS (ID INTEGER NOT NULL, CIDADE VARCHAR(50) NOT NULL, ESTADO VARCHAR(50) NOT NULL, LAT FLOAT NOT NULL, LON FLOAT NOT NULL)";
-		String createArestasString = "CREATE TABLE ARESTAS (ID INTEGER NOT NULL, ID_NO_1 INTEGER NOT NULL, ID_NO_2 INTEGER NOT NULL, DISTANCIA FLOAT NOT NULL)";
-		String alterArestasString = "ALTER TABLE ARESTAS ADD PRIMARY KEY (`ID_NO_1`, `ID_NO_2`);";
-
-
-		String insert = "INSERT INTO NOS (ID, CIDADE, ESTADO, LAT, LON) VALUES (?,?,?,?,?)";
-		int maxId = 0;
-		try {
-			if (useMysql)
-				conn = MysqlConnectionManager.getInstance().getConnection();
-			else
-				conn = DerbyConnectionManager.getInstance().getConnection();
-
-			Statement st = conn.createStatement();
-			if (dropTables) {
-				st.execute(dropNosString);
-				st = conn.createStatement();
-				st.execute(dropArestasString);
-				st = conn.createStatement();
-				st.execute(createNosString);
-				st = conn.createStatement();
-				st.execute(createArestasString);
-				st = conn.createStatement();
-				st.execute(alterArestasString);
-			}
-			st = conn.createStatement();
-			ResultSet rs = st.executeQuery("SELECT MAX(ID) FROM NOS");
-			while (rs.next())
-				maxId = rs.getInt(1);
-
-		} catch (Exception e) {
-			e.printStackTrace();
-		}
+	public void carregaNos() {
 
 		BufferedReader b = null;
 		try {
@@ -246,24 +232,15 @@ public class DesenhaPontos2 {
 			String linha = b.readLine();
 			int id = 0;
 			while (linha != null && linha.length() > 0) {
-				if (id >= maxId) {
+				String[] lista = linha.split(";");
+				String cidade = lista[0];
+				String estado = fixEstado(lista[2]);
+				Float lati = Float.parseFloat(lista[3]);
+				Float longi = Float.parseFloat(lista[4]);
 
-					String[] lista = linha.split(";");
-					String cidade = lista[0];
-					String estado = lista[2];
-					Float lati = Float.parseFloat(lista[3]);
-					Float longi = Float.parseFloat(lista[4]);
-
-					int i = 0;
-					PreparedStatement st = conn.prepareStatement(insert);
-					st.setInt(++i, ++id);
-					st.setString(++i, cidade);
-					st.setString(++i, fixEstado(estado));
-					st.setFloat(++i, lati);
-					st.setFloat(++i, longi);
-					st.execute();
-				}
-
+				No no = new No(++id, cidade, estado, lati, longi);
+				allNos.add(no);
+				allEstados.add(estado);
 				linha = b.readLine();
 			}
 		} catch (Exception e) {
@@ -271,36 +248,13 @@ public class DesenhaPontos2 {
 		}
 	}
 
-	public static List<Aresta> getArestas(String estado) {
-		List<Aresta> arestas = new ArrayList<Aresta>();
-
-		try {
-			String select = "SELECT A.ID, A.ID_NO_1, A.ID_NO_2, A.DISTANCIA FROM ARESTAS A, NOS N WHERE A.ID_NO_1 = N.ID AND N.ESTADO = ? ORDER BY A.DISTANCIA";
-			PreparedStatement st = conn.prepareStatement(select);
-			st.setString(1, estado);
-			ResultSet r = st.executeQuery();
-			while (r.next()) {
-				int i = 0;
-				int id = r.getInt(++i);
-				No no1 = new No(r.getInt(++i));
-				No no2 = new No(r.getInt(i++));
-				Float dist = r.getFloat(i++);
-
-				Aresta a = new Aresta(id, no1, no2, dist);
-				arestas.add(a);
-			}
-		} catch (Exception e) {
-			e.printStackTrace();
-		}
-
-		return arestas;
-	}
-
 	private static final ReentrantLock lock = new ReentrantLock();
 	private static HashMap<String, Integer> ix = new HashMap<String, Integer>();
 
 	private static int armazenados = 0;
 	private static int descartados = 0;
+
+	private static Map<String, ExecutorService> threads = new HashMap<String, ExecutorService>();
 
 	/**
 	 * @param args
@@ -310,16 +264,17 @@ public class DesenhaPontos2 {
 	public static void main(String[] args) throws IOException {
 
 		DesenhaPontos2 m = new DesenhaPontos2();
-		m.carregaNos(false, true);
+		m.carregaNos();
 
-		removeDirectory(Paths.get("distancias"));
-		Files.createDirectory(Paths.get("distancias"));
+		processaEstados();
 
-		List<String> estados = separaCidadesPorEstado();
+		m.imprimePontos();
 
-		Map<String, ExecutorService> threads = new HashMap<String, ExecutorService>();
+	}
 
-		for (String estado : estados) {
+	private static void processaEstados() {
+
+		for (String estado : allEstados) {
 			try {
 				lock.lock();
 				if (ix.get(estado) == null)
@@ -328,26 +283,16 @@ public class DesenhaPontos2 {
 				lock.unlock();
 			}
 
-			List<No> cidades = getNosPorEstado(estado);
-
 			threads.put(estado, Executors.newSingleThreadExecutor());
 
 			threads.get(estado).submit(() -> {
 				System.out.println("Iniciando: " + estado);
-				processaEstado(estado, cidades);
+				processaEstado(estado);
 			});
+
 		}
 
-		finalizaThreads(estados, threads);
-
-		// nos.stream().sorted(Comparator.comparing(No::getCidade));
-
-		// m.imprimePontos();
-
-	}
-
-	private static void finalizaThreads(List<String> estados, Map<String, ExecutorService> threads) {
-		for (String estado : estados) {
+		for (String estado : allEstados) {
 
 			threads.get(estado).shutdown();
 			try {
@@ -355,75 +300,42 @@ public class DesenhaPontos2 {
 			} catch (InterruptedException e) {
 				e.printStackTrace();
 			}
-
-			threads.put(estado, Executors.newSingleThreadExecutor());
-
-			threads.get(estado).submit(() -> {
-				System.out.println("Resumindo: " + estado);
-				//resumeArestas(estado, threads);
-			});
 
 			System.out.println("Finalizando: " + estado + " Armazenadas: " + armazenados + " Descartadas: "
 					+ descartados + " Total: " + (armazenados + descartados));
 		}
 	}
 
-	private static void resumeArestas(String estado, Map<String, ExecutorService> threads) {
-		try {
-			Path path = Paths.get("distancias/coordenadas-resumido-" + estado + ".txt");
-			Files.deleteIfExists(path);
-			Files.createFile(path);
-			try (BufferedWriter writer = Files.newBufferedWriter(path, StandardOpenOption.WRITE)) {
-				for (Aresta aresta : getArestas(estado)) {
-					writer.write(aresta.toString());
-				}
-			}
+	private static Map<String, Aresta> arestas = new HashMap<String, Aresta>();
 
-			threads.get(estado).shutdown();
-			try {
-				threads.get(estado).awaitTermination(Long.MAX_VALUE, TimeUnit.NANOSECONDS);
-			} catch (InterruptedException e) {
-				e.printStackTrace();
-			}
+	private static void processaEstado(String estado) {
 
-		} catch (Exception e) {
-			e.printStackTrace();
-		}
-	}
-
-	private static void processaEstado(String estado, List<No> cidades) {
-
-		String insert = "INSERT INTO ARESTAS (ID, ID_NO_1, ID_NO_2, DISTANCIA) VALUES (?,?,?,?)";
+		List<No> cidades = allNos.stream().filter(p -> p.getEstado().equals(estado)).collect(Collectors.toList());
 
 		for (; ix.get(estado) < cidades.size();) {
-			No n1 = null;
+
+			List<Aresta> arestasCidade;
 			lock.lock();
 			try {
-				n1 = cidades.get(ix.get(estado));
+				arestasCidade = new ArrayList<Aresta>();
 				ix.put(estado, ix.get(estado) + 1);
 			} finally {
 				lock.unlock();
 			}
-			List<No> nos = getNos();
-			for (No n2 : nos) {
 
-				if (n1.getId() != n2.getId()) {
+			/*List<No> nos = (List<No>) allNos.stream()
+					.filter(p -> p.getLatitude() >= allNos.get(ix.get(estado)).getLatitude()
+							&& p.getLongitude() >= allNos.get(ix.get(estado)).getLongitude())
+					.collect(Collectors.toList());
+*/
+			for (No n2 : allNos) {
 
-					if (verificaFronteira(n1, n2)) {
-						Float dist = calculaDistancia(n1, n2);
-						Aresta a = new Aresta(++armazenados, n1, n2, dist);
-						try {
-							int i = 0;
-							PreparedStatement st = conn.prepareStatement(insert);
-							st.setInt(++i, a.getId());
-							st.setInt(++i, n1.getId());
-							st.setInt(++i, n2.getId());
-							st.setFloat(++i, dist);
-							st.execute();
-						} catch (Exception e) {
-							e.printStackTrace();
-						}
+				if (allNos.get(ix.get(estado)).getId() != n2.getId()) {
 
+					if (verificaFronteira(allNos.get(ix.get(estado)), n2)) {
+						Float dist = calculaDistancia(allNos.get(ix.get(estado)), n2);
+						Aresta a = new Aresta(++armazenados, allNos.get(ix.get(estado)), n2, dist);
+						arestasCidade.add(a);
 					} else {
 						lock.lock();
 						try {
@@ -434,88 +346,17 @@ public class DesenhaPontos2 {
 					}
 				}
 			}
-		}
-
-	}
-
-	private static List<String> separaCidadesPorEstado() {
-		List<String> estados = new ArrayList<String>();
-
-		try {
-			String select = "SELECT DISTINCT ESTADO FROM NOS";
-			Statement st = conn.createStatement();
-			ResultSet r = st.executeQuery(select);
-			while (r.next()) {
-				estados.add(r.getString(1));
-			}
-		} catch (Exception e) {
-			e.printStackTrace();
-		}
-
-		return estados;
-	}
-
-	private static List<No> allNos = null;
-
-	private static List<No> getNos() {
-		if (allNos == null) {
-			allNos = new ArrayList<No>();
-			try {
-				String select = "SELECT ID, CIDADE, ESTADO, LAT, LON FROM NOS";
-				Statement st = conn.createStatement();
-				ResultSet r = st.executeQuery(select);
-				while (r.next()) {
-					int i = 0;
-					No no = new No(r.getInt(++i), r.getString(++i), r.getString(++i), r.getFloat(++i), r.getFloat(++i));
-					allNos.add(no);
-				}
-			} catch (Exception e) {
-				e.printStackTrace();
+			Collections.sort(arestasCidade);
+			if (arestasCidade.size() > 0) {
+				Aresta a = arestasCidade.get(0);
+				arestas.put(a.getKey(), a);
 			}
 		}
-		return allNos;
+
 	}
 
-	private static List<No> getNosPorEstado(String estado) {
-		List<No> result = new ArrayList<No>();
-
-		try {
-			String select = "SELECT ID, CIDADE, ESTADO, LAT, LON FROM NOS WHERE ESTADO = ?";
-			PreparedStatement st = conn.prepareStatement(select);
-			st.setString(1, estado);
-			ResultSet r = st.executeQuery();
-			while (r.next()) {
-				int i = 0;
-				No no = new No(r.getInt(++i), r.getString(++i), r.getString(++i), r.getFloat(++i), r.getFloat(++i));
-				result.add(no);
-			}
-		} catch (Exception e) {
-			e.printStackTrace();
-		}
-		return result;
-	}
-
-	public static void removeDirectory(Path path) {
-		try {
-			if (Files.isDirectory(path)) {
-				Files.list(path).forEach(s -> {
-					removeDirectory(s);
-				});
-				Files.delete(path);
-			} else
-
-			{
-				Files.delete(path);
-			}
-		} catch (IOException ex) {
-			ex.printStackTrace();
-		}
-	}
-
-	public static <T> Predicate<T> distinctByKey(Function<? super T, Object> keyExtractor) {
-		Map<Object, Boolean> seen = new ConcurrentHashMap<>();
-		return t -> seen.putIfAbsent(keyExtractor.apply(t), Boolean.TRUE) == null;
-	}
+	private static Set<String> allEstados = new HashSet<String>();
+	private static List<No> allNos = new ArrayList<No>();
 
 	private static boolean verificaFronteira(No no1, No no2) {
 		try {
@@ -549,9 +390,9 @@ public class DesenhaPontos2 {
 		case "MG":
 			return new String[] { "SP", "MS", "GO", "ES", "BA" };
 		case "PR":
-			return new String[] { "SP", "SC", "M" };
+			return new String[] { "SP", "SC", "MS" };
 		case "SC":
-			return new String[] { "SP", "SC", "M" };
+			return new String[] { "SP", "SC", "MS" };
 		case "RS":
 			return new String[] { "SC" };
 		case "AM":
