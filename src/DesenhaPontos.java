@@ -103,7 +103,7 @@ public class DesenhaPontos {
 		return dist;
 	}
 
-	public void imprimePontos() {
+	public void imprimePontos() throws Exception {
 		try {
 			int xmax = Integer.MIN_VALUE;
 			int ymax = Integer.MIN_VALUE;
@@ -152,8 +152,7 @@ public class DesenhaPontos {
 					double b2 = -1;
 
 					No no2 = null;
-					List<Aresta> nosLigados = arestas.values().stream().filter(p -> p.getNo1().getId() == no.getId())
-							.collect(Collectors.toList());
+					List<Aresta> nosLigados = buscaNosLigados(no);
 					if (nosLigados.size() > 0) {
 						no2 = nosLigados.get(0).getNo2();
 						b1 = no2.getLatitude();
@@ -224,6 +223,22 @@ public class DesenhaPontos {
 
 	}
 
+	private List<Aresta> buscaNosLigados(No no) throws Exception {
+		/*
+		 * List<Aresta> nosLigados = new ArrayList<Aresta>(); for (Aresta p :
+		 * arestas.values()) { if (p.getNo1().getId() == no.getId() ||
+		 * p.getNo2().getId() == no.getId()) { nosLigados.add(p); } } /*
+		 * List<Aresta> nosLigados = arestas.values().stream().filter(p ->
+		 * p.getNo1().getId() == no.getId()) .collect(Collectors.toList());
+		 * 
+		 * if (nosLigados.size() == 0) { semNos++; if
+		 * (no.getEstado().equals("SP")) System.out.println(
+		 * "Algo errado com o nó: " + no.getCidade() + " - " + no.getEstado() +
+		 * " Total: " + semNos); }
+		 */
+		return arestas.values().stream().filter(p -> p.getNo1().getId() == no.getId()).collect(Collectors.toList());
+	}
+
 	public void carregaNos() {
 
 		BufferedReader b = null;
@@ -253,6 +268,7 @@ public class DesenhaPontos {
 
 	private static int armazenados = 0;
 	private static int descartados = 0;
+	private static int semNos = 0;
 
 	private static Map<String, ExecutorService> threads = new HashMap<String, ExecutorService>();
 
@@ -261,18 +277,18 @@ public class DesenhaPontos {
 	 *            the command line arguments
 	 * @throws IOException
 	 */
-	public static void main(String[] args) throws IOException {
+	public static void main(String[] args) throws Exception {
 
 		DesenhaPontos m = new DesenhaPontos();
 		m.carregaNos();
 
-		processaEstados();
+		m.processaEstados();
 
 		m.imprimePontos();
 
 	}
 
-	private static void processaEstados() {
+	private void processaEstados() {
 
 		for (String estado : allEstados) {
 			try {
@@ -287,7 +303,11 @@ public class DesenhaPontos {
 
 			threads.get(estado).submit(() -> {
 				System.out.println("Iniciando: " + estado);
-				processaEstado(estado);
+				try {
+					processaEstado(estado);
+				} catch (Exception e) {
+					e.printStackTrace();
+				}
 			});
 
 		}
@@ -300,28 +320,22 @@ public class DesenhaPontos {
 			} catch (InterruptedException e) {
 				e.printStackTrace();
 			}
-
 			System.out.println("Finalizando: " + estado + " Armazenadas: " + armazenados + " Descartadas: "
 					+ descartados + " Total: " + (armazenados + descartados));
 		}
+		System.out.println("Final Armazenadas: " + armazenados + " Descartadas: " + descartados + " Total: "
+				+ (armazenados + descartados));
 	}
 
-	private static Map<String, Aresta> arestas = new HashMap<String, Aresta>();
+	private Map<String, Aresta> arestas = new HashMap<String, Aresta>();
 
-	private static void processaEstado(String estado) {
+	private void processaEstado(final String estado) throws Exception {
 
-		List<No> cidades = allNos.stream().filter(p -> p.getEstado().equals(estado)).collect(Collectors.toList());
+		List<No> cidades = buscaNosPorEstado(estado);
 
 		for (; ix.get(estado) < cidades.size();) {
 
-			List<Aresta> arestasCidade;
-			lock.lock();
-			try {
-				arestasCidade = new ArrayList<Aresta>();
-				ix.put(estado, ix.get(estado) + 1);
-			} finally {
-				lock.unlock();
-			}
+			List<Aresta> arestasCidade = new ArrayList<Aresta>();
 
 			/*
 			 * List<No> nos = (List<No>) allNos.stream() .filter(p ->
@@ -330,66 +344,88 @@ public class DesenhaPontos {
 			 * .collect(Collectors.toList());
 			 */
 			for (No n2 : allNos) {
-
-				if (allNos.get(ix.get(estado)).getId() != n2.getId()) {
-
-					if (verificaFronteira(allNos.get(ix.get(estado)), n2)) {
-						Float dist = calculaDistancia(allNos.get(ix.get(estado)), n2);
-						Aresta a = new Aresta(++armazenados, allNos.get(ix.get(estado)), n2, dist);
+				No n1 = cidades.get(ix.get(estado));
+				if (verificaFronteira(n1, n2)) {
+					Float dist = calculaDistancia(n1, n2);
+					lock.lock();
+					try {
+						Aresta a = new Aresta(++armazenados, n1, n2, dist);
 						arestasCidade.add(a);
-					} else {
-						lock.lock();
-						try {
-							descartados++;
-						} finally {
-							lock.unlock();
-						}
+					} finally {
+						lock.unlock();
+					}
+				} else {
+					lock.lock();
+					try {
+						descartados++;
+					} finally {
+						lock.unlock();
 					}
 				}
 			}
+
+			lock.lock();
+			try {
+				ix.put(estado, ix.get(estado) + 1);
+			} finally {
+				lock.unlock();
+			}
+
 			Collections.sort(arestasCidade);
+			if (arestasCidade.size() == 0) {
+				No no = cidades.get(ix.get(estado));
+				System.out.println("Não existe ligação para a cidade: " + no.getCidade() + " - " + no.getEstado());
+			}
+
+			boolean temAresta = false;
 			for (int i = 0; i < arestasCidade.size(); i++) {
 				Aresta a = arestasCidade.get(i);
-				if (a.getDistancia() > 2000) {
-					System.out.println("Cidade inconsistente: " + a.toString());
-				}
-				if (arestas.get(a.getKey()) != null) {
+				if (a.getDistancia() < 40 || arestas.get(a.getKey()) != null) {
 					continue;
 				} else {
 					arestas.put(a.getKey(), a);
+					temAresta = true;
 					break;
 				}
 			}
+			if (!temAresta)
+				System.out.println(cidades.get(ix.get(estado)));
 		}
 
 	}
 
-	private static Set<String> allEstados = new HashSet<String>();
-	private static List<No> allNos = new ArrayList<No>();
+	private List<No> buscaNosPorEstado(String estado) throws Exception {
+		return allNos.stream().filter(p -> p.getEstado().equals(estado)).collect(Collectors.toList());
 
-	private static boolean verificaFronteira(No no1, No no2) {
-		try {
+	}
+
+	private Set<String> allEstados = new HashSet<String>();
+	private List<No> allNos = new ArrayList<No>();
+
+	private boolean verificaFronteira(No no1, No no2) throws Exception {
+		if (no1.getId() != no2.getId()) {
 			if (no1.getEstado().equals(no2.getEstado()))
 				return true;
-			return Arrays.asList(getFronteiras(no1)).contains(no2);
-		} catch (Exception e) {
-			e.printStackTrace();
+
+			return Arrays.asList(getFronteiras(no1.getEstado())).contains(no2.getEstado());
 		}
 		return false;
 	}
 
-	private static String fixEstado(String estado) {
+	private String fixEstado(String estado) {
 		switch (estado) {
 		case "M":
 			return "MS";
 		case "N":
 			return "GO";
+		case "NA":
+			return "GO";
 		}
 		return estado;
 	}
 
-	private static String[] getFronteiras(No no) throws Exception {
-		switch (no.getEstado()) {
+	private String[] getFronteiras(String estado) throws Exception {
+		switch (estado) {
 		case "SP":
 			return new String[] { "RJ", "PR", "MS", "MG" };
 		case "RJ":
@@ -447,6 +483,6 @@ public class DesenhaPontos {
 		default:
 			break;
 		}
-		throw new Exception("Estado: " + no.getEstado() + " - " + no.getCidade() + " não encontrado.");
+		return new String[] {};
 	}
 }
