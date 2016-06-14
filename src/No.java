@@ -9,17 +9,13 @@
  * @author emerson
  */
 public class No implements Comparable<Object> {
-
+	
 	private Float latitude;
 	private Float longitude;
 	private String estado;
 	private String cidade;
 	private int id;
 
-	public No(int id) {
-		this.id = id;
-	}
-	
 	public No(int id, String cidade, String estado, Float latitude, Float longitude) {
 		this.id = id;
 		this.cidade = cidade;

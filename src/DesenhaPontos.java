@@ -1,9 +1,3 @@
-
-/*
- * To change this template, choose Tools | Templates
- * and open the template in the editor.
- */
-
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.File;
@@ -18,18 +12,11 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.stream.Collectors;
 
-/**
- *
- * @author augustomeira
- */
 public class DesenhaPontos {
 
 	int[][][] figura;
@@ -47,19 +34,46 @@ public class DesenhaPontos {
 		figura[i][j][2] = 255;
 	}
 
-	/*
-	 * public void linha(int x1, int y1, int x2, int x2){ sqrt((x1-x2);
-	 * //algoritmo de Bresenhan //draw line java //y=f(x) //Não precisa suavisar
-	 * a reta
-	 */
-	public void linha(int x, int y, int x2, int y2) {
-		int w = x2 - x;
-		int h = y2 - y;
-		double m = h / (double) w;
-		double j = y;
-		for (int i = x; i <= x2; i++) {
-			setPreto(i, (int) j);
-			j += m;
+	private int dy = 0;
+	private int dx = 0;
+
+	public void linha(int x1, int y1, int x2, int y2) {
+
+		int d = 0;
+
+		int dy = Math.abs(y2 - y1);
+		int dx = Math.abs(x2 - x1);
+
+		int dy2 = (dy << 1);
+		int dx2 = (dx << 1);
+
+		int ix = x1 < x2 ? 1 : -1;
+		int iy = y1 < y2 ? 1 : -1;
+		
+		if (dy <= dx) {
+			for (;;) {
+				setPreto(x1 - xmin, y1 - ymin);
+				if (x1 == x2)
+					break;
+				x1 += ix;
+				d += dy2;
+				if (d > dx) {
+					y1 += iy;
+					d -= dx2;
+				}
+			}
+		} else {
+			for (;;) {
+				setPreto(x1 - xmin, y1 - ymin);
+				if (y1 == y2)
+					break;
+				y1 += iy;
+				d += dx2;
+				if (d > dy) {
+					x1 += ix;
+					d -= dy2;
+				}
+			}
 		}
 	}
 
@@ -82,7 +96,7 @@ public class DesenhaPontos {
 	 * }
 	 */
 
-	private static Float calculaDistancia(No no1, No no2) {
+	public static Float calculaDistancia(No no1, No no2) {
 
 		double lat1 = no1.getLatitude();
 		double lng1 = no1.getLongitude();
@@ -103,27 +117,29 @@ public class DesenhaPontos {
 		return dist;
 	}
 
-	public void imprimePontos() throws Exception {
+	private BufferedWriter out = null;
+
+	public void inicializaArquivo(String arquivo) {
 		try {
-			int xmax = Integer.MIN_VALUE;
-			int ymax = Integer.MIN_VALUE;
-			int xmin = Integer.MAX_VALUE;
-			int ymin = Integer.MAX_VALUE;
+			xmax = Integer.MIN_VALUE;
+			ymax = Integer.MIN_VALUE;
+			xmin = Integer.MAX_VALUE;
+			ymin = Integer.MAX_VALUE;
+			dx = 0;
+			dy = 0;
 
 			// primeira vez encontra os limites xmax, xmin, ymax, ymin
 			// segunda vez imprime o arquivo ppm
 
 			for (int vez = 0; vez < 2; vez++) {
-				int dx = 0;
-				int dy = 0;
-				BufferedWriter out = null;
+
 				if (vez == 1) {
 					dx = xmax - xmin + 1;
 					dy = ymax - ymin + 1;
 					// cada posicao da matrix eh uma coordenada x,y com tres
 					// dimensoes [x][y][0] [x][y][1] [x][y][2] para R-G-B
 					figura = new int[dx][dy][3];
-					out = new BufferedWriter(new FileWriter(new File("aux.ppm")));
+					out = new BufferedWriter(new FileWriter(new File(arquivo)));
 					// cabecalho da figura ppm
 					// http://en.wikipedia.org/wiki/Netpbm_format#PPM_example
 					out.write("P3\n");
@@ -138,108 +154,69 @@ public class DesenhaPontos {
 							} else {
 								setBranco(i, j);
 							}
-
 						}
 					}
 
 				}
 
-				for (No no : allNos) {
+				// coordenadas.
+				BufferedReader b = new BufferedReader(new FileReader(new File("coordenadas.txt")));
 
-					double a1 = no.getLatitude();
-					double a2 = no.getLongitude();
-					double b1 = -1;
-					double b2 = -1;
+				// leitura
+				String linha = b.readLine();
 
-					No no2 = null;
-					List<Aresta> nosLigados = buscaNosLigados(no);
-					if (nosLigados.size() > 0) {
-						no2 = nosLigados.get(0).getNo2();
-						b1 = no2.getLatitude();
-						b2 = no2.getLongitude();
-					}
+				while (linha != null && linha.length() > 0) {
+					String[] lista = linha.split(";");
+
+					Float a1 = Float.parseFloat(lista[3]);
+					Float a2 = Float.parseFloat(lista[4]);
 
 					// converte em inteiro com um fator de escala 30.
 					int x = (int) (a1 * 30);
 					int y = (int) (a2 * 30);
 
-					int x2 = (int) (b1 * 30);
-					int y2 = (int) (b2 * 30);
-
 					if (vez == 0) {
 						// procura min e max
-						if (x < xmin) {
+						if (x < xmin)
 							xmin = x;
-						}
-						if (x > xmax) {
+						if (x > xmax)
 							xmax = x;
-						}
-						if (y < ymin) {
+						if (y < ymin)
 							ymin = y;
-						}
-						if (y > ymax) {
+						if (y > ymax)
 							ymax = y;
-						}
-
-						// procura min e max
-						if (x2 < xmin) {
-							xmin = x2;
-						}
-						if (x2 > xmax) {
-							xmax = x2;
-						}
-						if (y2 < ymin) {
-							ymin = y2;
-						}
-						if (y2 > ymax) {
-							ymax = y2;
-						}
-					} else {
-						// imprime latitude e longitude
-						setPreto(x - xmin, y - ymin);
-
-						if (b1 != -1 && b2 != -1)
-							linha(x - xmin, y - ymin, x2 - xmin, y2 - ymin);
 					}
+					assert (xmin <= xmax);
 					assert (ymin <= ymax);
-				}
 
-				if (vez == 1) {
-					// imprime o arquivo.
-					for (int i = dx - 1; i >= 0; i--) {
-						for (int j = 0; j < dy; j++) {
-							out.write(figura[i][j][0] + " " + figura[i][j][1] + " " + figura[i][j][2] + " ");
-						}
-						out.write("\n");
-					}
-
-					out.write("\n");
-					out.close();
+					linha = b.readLine();
 				}
 			}
+
+			// vertices = new ArrayList<Vertice>(total);
 		} catch (IOException ex) {
 			Logger.getLogger(DesenhaPontos.class.getName()).log(Level.SEVERE, null, ex);
 		}
 
 	}
 
-	private List<Aresta> buscaNosLigados(No no) throws Exception {
-		/*
-		 * List<Aresta> nosLigados = new ArrayList<Aresta>(); for (Aresta p :
-		 * arestas.values()) { if (p.getNo1().getId() == no.getId() ||
-		 * p.getNo2().getId() == no.getId()) { nosLigados.add(p); } } /*
-		 * List<Aresta> nosLigados = arestas.values().stream().filter(p ->
-		 * p.getNo1().getId() == no.getId()) .collect(Collectors.toList());
-		 * 
-		 * if (nosLigados.size() == 0) { semNos++; if
-		 * (no.getEstado().equals("SP")) System.out.println(
-		 * "Algo errado com o nó: " + no.getCidade() + " - " + no.getEstado() +
-		 * " Total: " + semNos); }
-		 */
-		return arestas.values().stream().filter(p -> p.getNo1().getId() == no.getId()).collect(Collectors.toList());
+	private void imprimePontos() throws IOException {
+		for (int i = dx - 1; i >= 0; i--) {
+			for (int j = 0; j < dy; j++) {
+				out.write(figura[i][j][0] + " " + figura[i][j][1] + " " + figura[i][j][2] + " ");
+			}
+			out.write("\n");
+		}
 	}
 
+	static int xmax = Integer.MIN_VALUE;
+	static int ymax = Integer.MIN_VALUE;
+	static int xmin = Integer.MAX_VALUE;
+	static int ymin = Integer.MAX_VALUE;
+
 	public void carregaNos() {
+		allEstados = new HashSet<String>();
+		allNos = new ArrayList<No>();
 
 		BufferedReader b = null;
 		try {
@@ -267,10 +244,6 @@ public class DesenhaPontos {
 	private static HashMap<String, Integer> ix = new HashMap<String, Integer>();
 
 	private static int armazenados = 0;
-	private static int descartados = 0;
-	private static int semNos = 0;
-
-	private static Map<String, ExecutorService> threads = new HashMap<String, ExecutorService>();
 
 	/**
 	 * @param args
@@ -280,51 +253,89 @@ public class DesenhaPontos {
 	public static void main(String[] args) throws Exception {
 
 		DesenhaPontos m = new DesenhaPontos();
-		m.carregaNos();
 
 		m.processaEstados();
-
-		m.imprimePontos();
-
 	}
 
 	private void processaEstados() {
 
-		for (String estado : allEstados) {
-			try {
-				lock.lock();
-				if (ix.get(estado) == null)
-					ix.put(estado, 0);
-			} finally {
-				lock.unlock();
+		carregaNos();
+		try {
+			inicializaArquivo("aux3.ppm");
+			encontraCaminhoDijkstra();
+			imprimePontos();
+			finalizaArquivo();
+		} catch (Exception e) {
+			e.printStackTrace();
+		}
+
+		carregaNos();
+		try {
+			inicializaArquivo("aux2.ppm");
+			for (String estado : allEstados) {
+				encontraMST(estado);
+
 			}
+			imprimePontos();
+			finalizaArquivo();
+		} catch (Exception e) {
+			e.printStackTrace();
+		}
 
-			threads.put(estado, Executors.newSingleThreadExecutor());
+		carregaNos();
+		try {
+			inicializaArquivo("aux1.ppm");
+			for (String estado : allEstados) {
 
-			threads.get(estado).submit(() -> {
-				System.out.println("Iniciando: " + estado);
 				try {
-					processaEstado(estado);
-				} catch (Exception e) {
-					e.printStackTrace();
+					lock.lock();
+					if (ix.get(estado) == null)
+						ix.put(estado, 0);
+				} finally {
+					lock.unlock();
 				}
-			});
+				processaEstado(estado);
 
-		}
-
-		for (String estado : allEstados) {
-
-			threads.get(estado).shutdown();
-			try {
-				threads.get(estado).awaitTermination(Long.MAX_VALUE, TimeUnit.NANOSECONDS);
-			} catch (InterruptedException e) {
-				e.printStackTrace();
 			}
-			System.out.println("Finalizando: " + estado + " Armazenadas: " + armazenados + " Descartadas: "
-					+ descartados + " Total: " + (armazenados + descartados));
+			imprimePontos();
+			finalizaArquivo();
+		} catch (Exception e) {
+			e.printStackTrace();
 		}
-		System.out.println("Final Armazenadas: " + armazenados + " Descartadas: " + descartados + " Total: "
-				+ (armazenados + descartados));
+
+	}
+
+	private void encontraCaminhoDijkstra() {
+		List<Integer> list = Dijkstras.getDijkstra(this.allNos);
+		List<No> result = new ArrayList<No>();
+		for (int i = 0; i < list.size() - 1; i++) {
+			int line = i;
+			result.add(allNos.stream().filter(p -> p.getId() == list.get(line)).limit(1).collect(Collectors.toList())
+					.get(0));
+		}
+
+		for (int i = 0; i < result.size() - 1; i++) {
+
+			No no1 = result.get(i);
+			No no2 = result.get(i + 1);
+
+			int lat1 = (int) (no1.getLatitude() * 30);
+			int lon1 = (int) (no1.getLongitude() * 30);
+
+			int lat2 = (int) (no2.getLatitude() * 30);
+			int lon2 = (int) (no2.getLongitude() * 30);
+
+			linha(lat1, lon1, lat2, lon2);
+
+			System.out.println(no1);
+			System.out.println(no2);
+		}
+
+	}
+
+	private void finalizaArquivo() throws IOException {
+		out.write("\n");
+		out.close();
 	}
 
 	private Map<String, Aresta> arestas = new HashMap<String, Aresta>();
@@ -337,12 +348,6 @@ public class DesenhaPontos {
 
 			List<Aresta> arestasCidade = new ArrayList<Aresta>();
 
-			/*
-			 * List<No> nos = (List<No>) allNos.stream() .filter(p ->
-			 * p.getLatitude() >= allNos.get(ix.get(estado)).getLatitude() &&
-			 * p.getLongitude() >= allNos.get(ix.get(estado)).getLongitude())
-			 * .collect(Collectors.toList());
-			 */
 			for (No n2 : allNos) {
 				No n1 = cidades.get(ix.get(estado));
 				if (verificaFronteira(n1, n2)) {
@@ -351,13 +356,6 @@ public class DesenhaPontos {
 					try {
 						Aresta a = new Aresta(++armazenados, n1, n2, dist);
 						arestasCidade.add(a);
-					} finally {
-						lock.unlock();
-					}
-				} else {
-					lock.lock();
-					try {
-						descartados++;
 					} finally {
 						lock.unlock();
 					}
@@ -375,12 +373,20 @@ public class DesenhaPontos {
 			if (arestasCidade.size() == 0) {
 				No no = cidades.get(ix.get(estado));
 				System.out.println("Não existe ligação para a cidade: " + no.getCidade() + " - " + no.getEstado());
+			} else {
+				int lat1 = (int) (arestasCidade.get(0).getNo1().getLatitude() * 30);
+				int lon1 = (int) (arestasCidade.get(0).getNo1().getLongitude() * 30);
+
+				int lat2 = (int) (arestasCidade.get(0).getNo2().getLatitude() * 30);
+				int lon2 = (int) (arestasCidade.get(0).getNo2().getLongitude() * 30);
+
+				linha(lat1, lon1, lat2, lon2);
 			}
 
 			boolean temAresta = false;
 			for (int i = 0; i < arestasCidade.size(); i++) {
 				Aresta a = arestasCidade.get(i);
-				if (a.getDistancia() < 40 || arestas.get(a.getKey()) != null) {
+				if (arestas.get(a.getKey()) != null) {
 					continue;
 				} else {
 					arestas.put(a.getKey(), a);
@@ -394,13 +400,51 @@ public class DesenhaPontos {
 
 	}
 
+	public void encontraMST(String estado) throws Exception {
+
+		List<Aresta> arestas = new ArrayList<Aresta>();
+
+		List<No> cidades = buscaNosPorEstado(estado);
+
+		for (int i = 0; i < cidades.size(); i++) {
+			for (int j = 0; j < cidades.size(); j++) {
+
+				if (i == j)
+					continue;
+
+				No a = cidades.get(i);
+				No b = cidades.get(j);
+
+				Aresta aresta = new Aresta(++armazenados, a, b, calculaDistancia(a, b));
+				arestas.add(aresta);
+			}
+		}
+
+		Collections.sort(arestas);
+
+		List<Aresta> tree = Kruskal.getInstance().generateMST(arestas);
+
+		for (int i = 0; i < tree.size(); i++) {
+			Aresta a = tree.get(i);
+
+			int lat1 = (int) (a.getNo1().getLatitude() * 30);
+			int lon1 = (int) (a.getNo1().getLongitude() * 30);
+
+			int lat2 = (int) (a.getNo2().getLatitude() * 30);
+			int lon2 = (int) (a.getNo2().getLongitude() * 30);
+
+			linha(lat1, lon1, lat2, lon2);
+		}
+
+	}
+
 	private List<No> buscaNosPorEstado(String estado) throws Exception {
 		return allNos.stream().filter(p -> p.getEstado().equals(estado)).collect(Collectors.toList());
 
 	}
 
-	private Set<String> allEstados = new HashSet<String>();
-	private List<No> allNos = new ArrayList<No>();
+	private Set<String> allEstados;
+	private List<No> allNos;
 
 	private boolean verificaFronteira(No no1, No no2) throws Exception {
 		if (no1.getId() != no2.getId()) {

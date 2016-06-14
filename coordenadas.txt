@@ -27513,7 +27513,7 @@ Porto Brejauva;Sao Paulo;SP;-19.9666667;-49.3166667
 Indiapora;Sao Paulo;SP;-19.95;-50.2833333
 Porto Militao;Sao Paulo;SP;-19.9333333;-49.95
 Araba;Sao Paulo;SP;-19.85;-50.4333333
-Cantareira;Sao Paulo;SP;-2.9833333;-47.4833333
+Paragominas;Para;PA;-2.9833333;-47.4833333
 Palmeiropolis;Tocantins;TO;-13.0622222;-48.3669444
 Agua Bonita;Tocantins;TO;-13.0333333;-49.8166667
 Cristal;Tocantins;TO;-13.0113889;-47.7883333
